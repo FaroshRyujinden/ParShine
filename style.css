@@ -1,0 +1,210 @@
+/* Adwaita custom theme tweaks */
+:root {
+    --accent-color: #3584e4; /* Default GNOME Blue */
+}
+
+/* Sidebar styling (Outer Container) */
+.sidebar-box {
+    background-color: alpha(currentColor, 0.05);
+    border-right: 1px solid alpha(currentColor, 0.1);
+}
+
+.p-sidebar {
+    background-color: transparent;
+    padding: 12px;
+}
+
+/* Sidebar Button styling (The Pill) */
+.sidebar-btn {
+    border-radius: 20px;
+    margin-bottom: 15px;
+    min-height: 50px;
+    min-width: 50px;
+    transition: all 200ms cubic-bezier(0.2, 0, 0.3, 1);
+    background-color: transparent;
+    border: none;
+    box-shadow: none;
+    padding: 0;
+}
+
+/* Base state for icons when not selected */
+.sidebar-btn image {
+    opacity: 0.6;
+    color: currentColor;
+    transition: transform 150ms ease;
+}
+
+.sidebar-btn:hover {
+    background-color: alpha(currentColor, 0.08);
+}
+
+.sidebar-btn:hover image {
+    opacity: 1;
+    transform: scale(1.1);
+}
+
+/* SELECTED STATE: Force the background entirely */
+.sidebar-btn:checked {
+    background-color: var(--accent-color);
+    box-shadow: 0 8px 24px alpha(var(--accent-color), 0.4);
+    border: none;
+}
+
+.sidebar-btn:checked image {
+    color: white;
+    opacity: 1;
+    transform: scale(1.15);
+}
+
+/* Sidebar Emojis */
+.sidebar-emoji {
+    font-size: 24px;
+    opacity: 0.7;
+    transition: all 200ms ease;
+}
+
+.sidebar-btn:hover .sidebar-emoji {
+    opacity: 1;
+    transform: scale(1.1);
+}
+
+.sidebar-btn:checked .sidebar-emoji {
+    opacity: 1;
+    transform: scale(1.2);
+}
+
+/* Hide the default dotted selection focus from GTK */
+.sidebar-btn:focus {
+    outline: none;
+}
+
+/* Caption and Labels */
+.caption {
+    font-size: 0.8em;
+    font-weight: bold;
+    opacity: 0.7;
+    margin-top: 10px;
+}
+
+/* Device Emojis */
+.device-emoji {
+    font-size: 72px;
+}
+
+/* Main title styling */
+.main-title {
+    font-size: 26pt;
+    font-weight: 800;
+    margin-bottom: 25px;
+}
+
+/* Card-like sections */
+.card {
+    background-color: alpha(currentColor, 0.05);
+    border-radius: 20px;
+    padding: 24px;
+    margin-bottom: 15px;
+    border: 1px solid alpha(currentColor, 0.1);
+    transition: transform 200ms ease, box-shadow 200ms ease;
+}
+
+.card:hover {
+    transform: translateY(-4px);
+    background-color: alpha(currentColor, 0.09);
+    box-shadow: 0 8px 24px alpha(currentColor, 0.08);
+}
+
+/* --- Device Tile (Devices Page Grid) --- */
+.device-tile {
+    background-color: alpha(currentColor, 0.03);
+    border-radius: 24px;
+    padding: 25px;
+    min-width: 180px;
+    border: 1px solid alpha(currentColor, 0.08);
+    transition: all 250ms cubic-bezier(0.2, 0, 0.3, 1);
+}
+
+.device-tile:hover {
+    transform: translateY(-5px) scale(1.02);
+    background-color: alpha(var(--accent-color), 0.05);
+    border-color: alpha(var(--accent-color), 0.4);
+    box-shadow: 0 10px 30px alpha(var(--accent-color), 0.15);
+}
+
+.device-icon {
+    color: var(--accent-color);
+    margin-bottom: 10px;
+    opacity: 0.9;
+}
+
+.device-name {
+    font-weight: 800;
+    font-size: 1.15em;
+}
+
+.device-ip {
+    font-size: 0.9em;
+    opacity: 0.6;
+    margin-bottom: 5px;
+}
+
+/* Accent Buttons */
+.accent-button {
+    background-color: var(--accent-color);
+    color: white;
+    font-weight: bold;
+    border-radius: 12px;
+    padding: 12px 24px;
+    border: none;
+}
+
+.accent-button:hover {
+    filter: brightness(1.1);
+    box-shadow: 0 4px 12px alpha(var(--accent-color), 0.4);
+}
+
+/* Section Headings */
+.heading {
+    font-weight: bold;
+    font-size: 1.25em;
+    margin-top: 20px;
+    margin-bottom: 10px;
+    color: var(--accent-color);
+}
+
+/* Status Labels */
+.status-connected {
+    color: #2ec27e;
+    font-weight: bold;
+    background-color: alpha(#2ec27e, 0.1);
+    padding: 6px 14px;
+    border-radius: 20px;
+    font-size: 0.85em;
+}
+
+.status-disconnected {
+    color: #ed333b;
+    font-weight: bold;
+    background-color: alpha(#ed333b, 0.1);
+    padding: 6px 14px;
+    border-radius: 20px;
+    font-size: 0.85em;
+}
+
+.success-label {
+    color: #2ec27e;
+    font-weight: 800;
+    font-size: 0.85em;
+    background: alpha(#2ec27e, 0.15);
+    padding: 4px 12px;
+    border-radius: 99px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.dim-label {
+    opacity: 0.5;
+    font-weight: 500;
+    font-size: 0.85em;
+    text-transform: uppercase;
+}
