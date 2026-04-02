@@ -11,6 +11,7 @@ import platform
 import threading
 import time
 from backend_api import SunshineBackend
+import colorsys
 
 CONFIG_DIR = os.path.expanduser("~/.config/projeto_p")
 CONFIG_FILE = os.path.join(CONFIG_DIR, "config.json")
@@ -23,6 +24,33 @@ def resource_path(relative_path):
         base_path = os.path.abspath(".")
     return os.path.join(base_path, relative_path)
 
+class ParShineSplash(Gtk.Window):
+    def __init__(self, app):
+        super().__init__(application=app, decorated=False, resizable=False)
+        self.set_default_size(420, 420)
+        self.add_css_class("splash-window")
+        
+        # Overlay para permitir camadas se quisermos adicionar algo mais futuramente
+        overlay = Gtk.Overlay()
+        
+        self.box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, valign=Gtk.Align.CENTER, halign=Gtk.Align.CENTER)
+        self.box.add_css_class("splash-box")
+        
+        logo_path = resource_path("logo.png")
+        if os.path.exists(logo_path):
+            img = Gtk.Picture.new_for_filename(logo_path)
+            img.set_size_request(280, 280)
+            img.add_css_class("splash-logo")
+            self.box.append(img)
+        
+        self.spinner = Gtk.Spinner(spinning=True, halign=Gtk.Align.CENTER)
+        self.spinner.add_css_class("splash-spinner")
+        self.spinner.set_size_request(60, 60)
+        self.box.append(self.spinner)
+        
+        overlay.set_child(self.box)
+        self.set_child(overlay)
+
 class ProjetoPApp(Adw.Application):
     def __init__(self, **kwargs):
         app_id = "io.github.farosh.parshine"
@@ -32,9 +60,13 @@ class ProjetoPApp(Adw.Application):
         self.backend = SunshineBackend()
         self.backend.ensure_setup()
         
+        # Provedor CSS persistente para cores de destaque (evita recriar a cada ciclo RGB)
+        self.accent_provider = Gtk.CssProvider()
+        
         # Estado Inicial
-        self.config = {"accent_color": "#9b30ff", "dark_mode": True}
+        self.config = {"theme_mode": 1, "accent_color": "#9b30ff", "lang": "pt", "rgb_speed": 0.005} # 0: Light, 1: Dark, 2: Gamer
         self.load_local_config()
+        self.hue = 0.0
         self.first_update_done = False
         self.last_client_info = None # Memoriza o identificador persistente
         
@@ -105,6 +137,7 @@ class ProjetoPApp(Adw.Application):
                 "random_mac": "Randomizar MAC (PS5)", "guide_timeout": "Limite Tempo Botão Início",
                 "keyboard": "Ativar Teclado", "alt_win": "Mapear Alt Dir p/ Windows",
                 "mouse": "Ativar Mouse", "hires_scroll": "Rolagem Alta Resolução", "native_touch": "Suporte Caneta/Toque",
+                "gamer": "Modo Gamer", "rgb_speed": "Velocidade RGB",
                 "input_tip": "Configure controles, mouse e teclado.", "gamepad_tip": "Permitir controladores de jogo.",
                 "gamepad_kind_tip": "Tipo de controle emulado no host Sunshine.", "ds4_motion_tip": "Ativa sensores de movimento para clientes DS4.",
                 "ds4_touchpad_tip": "Habilita o touchpad para clientes DS4.", "random_mac_tip": "Usa MAC aleatório para controles virtuais.",
@@ -154,6 +187,7 @@ class ProjetoPApp(Adw.Application):
                 "random_mac": "Randomize MAC (PS5)", "guide_timeout": "Guide Button Timeout",
                 "keyboard": "Enable Keyboard", "alt_win": "Map Right Alt to Windows",
                 "mouse": "Enable Mouse", "hires_scroll": "High Resolution Scroll", "native_touch": "Native Touch/Pen Support",
+                "gamer": "Gamer Mode", "rgb_speed": "RGB Speed",
                 "input_tip": "Configure gamepad, mouse and keyboard.", "gamepad_tip": "Allow client game controllers.",
                 "gamepad_kind_tip": "The type of gamepad emulated on the host.", "ds4_motion_tip": "Enable motion sensors for DS4 clients.",
                 "ds4_touchpad_tip": "Enable touchpad support for DS4 clients.", "random_mac_tip": "Randomize MAC for virtual controllers.",
@@ -183,6 +217,15 @@ class ProjetoPApp(Adw.Application):
 
     def on_activate(self, app):
         self._load_css()
+        
+        # 1. Mostra a Splash Screen imediatamente
+        self.splash = ParShineSplash(app)
+        self.splash.present()
+        
+        # 2. Defer a criação da janela principal para manter a splash fluída
+        GLib.timeout_add(100, self._init_main_ui, app)
+
+    def _init_main_ui(self, app):
         self.win = Adw.ApplicationWindow(application=app)
         self.win.set_title("ParShine")
         self.win.set_icon_name("io.github.farosh.parshine")
@@ -201,7 +244,8 @@ class ProjetoPApp(Adw.Application):
         
         # Tema e Cores
         style_mgr = Adw.StyleManager.get_default()
-        style_mgr.set_color_scheme(Adw.ColorScheme.FORCE_DARK if self.config.get("dark_mode") else Adw.ColorScheme.FORCE_LIGHT)
+        mode = self.config.get("theme_mode", 1)
+        style_mgr.set_color_scheme(Adw.ColorScheme.FORCE_LIGHT if mode == 0 else Adw.ColorScheme.FORCE_DARK)
         
         # --- SISTEMA DE TRADUÇÃO ---
         if "lang" not in self.config: self.config["lang"] = "pt"
@@ -268,9 +312,6 @@ class ProjetoPApp(Adw.Application):
         self.c_btn.connect("color-set", self.on_color_set)
         sb_box.append(self.c_btn)
         
-        cb_prov = Gtk.CssProvider(); cb_prov.load_from_data(".color-bar { min-height: 12px; height: 12px; }".encode())
-        Gtk.StyleContext.add_provider_for_display(Gdk.Display.get_default(), cb_prov, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
-        
         self.apply_accent_color(self.config.get("accent_color"))
         self._update_theme_icon()
         
@@ -283,12 +324,6 @@ class ProjetoPApp(Adw.Application):
         dash_sc = Gtk.ScrolledWindow(); dash_sc.set_child(self.m_box); self.stack.add_named(dash_sc, "devices")
         # O build_dash() será chamado automaticamente pelo on_nav_toggled do primeiro botão
         self._update_lang_ui()
-        GLib.timeout_add_seconds(1, self.refresh_loop)
-        
-        # CSS Correction
-        cb_prov = Gtk.CssProvider(); cb_prov.load_from_data(".color-bar { min-height: 12px; }".encode())
-        Gtk.StyleContext.add_provider_for_display(Gdk.Display.get_default(), cb_prov, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
-        
         # --- VIEWS ---
         
         
@@ -340,15 +375,31 @@ class ProjetoPApp(Adw.Application):
         
         # Condição de Colapso (Responsivo)
         self.win.set_content(self.split_view)
-        self.win.present()
-        
-        # CSS Correction
-        cb_prov = Gtk.CssProvider(); cb_prov.load_from_data(".color-bar { min-height: 12px; }".encode())
-        Gtk.StyleContext.add_provider_for_display(Gdk.Display.get_default(), cb_prov, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
         
         self._update_lang_ui()
         self.build_dash()
+        
+        # 3. Inicia o monitoramento e o ciclo RGB (Apenas uma vez)
+        GLib.timeout_add(50, self._rgb_cycle_timer)
         GLib.timeout_add_seconds(1, self.refresh_loop)
+        
+        # 4. Aguarda um pouco mais na splash para garantir que o backend subiu
+        GLib.timeout_add(2200, self._finish_splash)
+        
+        return False # Para o timeout_add inicial
+
+    def _finish_splash(self):
+        # Efeito de Fade Out
+        if hasattr(self, 'splash'):
+            self.splash.box.add_css_class("splash-fade-out")
+            GLib.timeout_add(800, self._reveal_main)
+        return False
+
+    def _reveal_main(self):
+        if hasattr(self, 'splash'):
+            self.splash.destroy()
+        self.win.present()
+        return False
 
     def on_nav_toggled(self, b):
         if not b.get_active(): return
@@ -377,8 +428,9 @@ class ProjetoPApp(Adw.Application):
         while (child := self.i_box.get_first_child()): self.i_box.remove(child)
         self.build_settings()
         self.title_widget.set_subtitle(self.tr("subtitle"))
-        self.pin_title.set_label(self.tr("pair_title"))
-        self.pair_btn.set_label(self.tr("pair_btn"))
+        if hasattr(self, "pin_title"): self.pin_title.set_label(self.tr("pair_title"))
+        if hasattr(self, "pair_btn"): self.pair_btn.set_label(self.tr("pair_btn"))
+        
         # Reset para forçar preenchimento no próximo refresh
         self.first_update_done = False
 
@@ -434,13 +486,13 @@ class ProjetoPApp(Adw.Application):
             img.set_pixel_size(160); img.set_margin_bottom(30); img.set_halign(Gtk.Align.CENTER)
             self.a_box.append(img)
             
-            l1 = Gtk.Label(label="ParShine Alpha v0.1"); l1.add_css_class("main-title")
+            l1 = Gtk.Label(label="ParShine Alpha v0.2"); l1.add_css_class("main-title")
             l1.set_halign(Gtk.Align.CENTER); self.a_box.append(l1)
             
             l2 = Gtk.Label(label="Created by Farosh Ryujinden"); l2.set_opacity(0.7)
             l2.set_halign(Gtk.Align.CENTER); self.a_box.append(l2)
         else:
-            sp = Adw.StatusPage(icon_name="help-about-symbolic", title="ParShine Alpha v0.1", description="Created by Farosh Ryujinden")
+            sp = Adw.StatusPage(icon_name="help-about-symbolic", title="ParShine Alpha v0.2", description="Created by Farosh Ryujinden")
             self.a_box.append(sp)
 
     def build_input(self):
@@ -490,6 +542,15 @@ class ProjetoPApp(Adw.Application):
         for t, k, o in [(tr("log"), "min_log_level", self.presets["min_log_level"])]:
             r = Adw.ActionRow(title=t); sl = Gtk.StringList.new([opt[0] for opt in o]); dd = Gtk.DropDown(model=sl)
             dd.set_valign(Gtk.Align.CENTER); r.add_suffix(dd); self.widgets[k] = (dd, None, o); set_tip(r, k); c.append(r)
+        
+        # Controle de Velocidade RGB (Apenas Visual)
+        self.speed_row = Adw.ActionRow(title=tr("rgb_speed"))
+        self.speed_btn = Gtk.Button(); self.speed_btn.set_valign(Gtk.Align.CENTER)
+        self.speed_btn.add_css_class("flat"); self.speed_btn.connect("clicked", self.cycle_rgb_speed)
+        self.speed_row.add_suffix(self.speed_btn)
+        self._update_speed_label()
+        c.append(self.speed_row)
+        
         self.s_box.append(c)
 
         # Grupo: Vídeo e Áudio
@@ -650,28 +711,90 @@ class ProjetoPApp(Adw.Application):
         if len(pin) == 4 and self.backend.pair_pin(pin): self.pin_entry.set_text("")
 
     def toggle_theme(self, b):
-        self.config["dark_mode"] = not self.config["dark_mode"]
-        Adw.StyleManager.get_default().set_color_scheme(Adw.ColorScheme.FORCE_DARK if self.config["dark_mode"] else Adw.ColorScheme.FORCE_LIGHT)
+        # Ciclo: 0 (Light) -> 1 (Dark) -> 2 (Gamer) -> 0
+        mode = (self.config.get("theme_mode", 1) + 1) % 3
+        self.config["theme_mode"] = mode
+        
+        style_mgr = Adw.StyleManager.get_default()
+        if mode == 0:
+            style_mgr.set_color_scheme(Adw.ColorScheme.FORCE_LIGHT)
+        else:
+            style_mgr.set_color_scheme(Adw.ColorScheme.FORCE_DARK)
+            
+        # Ao sair do modo gamer para o light, reseta para a cor original
+        if mode != 2:
+            self.apply_accent_color(self.config.get("accent_color", "#9b30ff"))
+            
+        self._save_config_to_disk()
         self._update_theme_icon()
 
+    def _rgb_cycle_timer(self):
+        if self.config.get("theme_mode") == 2:
+            step = self.config.get("rgb_speed", 0.005)
+            self.hue = (self.hue + step) % 1.0
+            r, g, b = colorsys.hls_to_rgb(self.hue, 0.6, 0.8)
+            hex_color = f"#{int(r*255):02x}{int(g*255):02x}{int(b*255):02x}"
+            
+            # Aplica visualmente
+            self.apply_accent_color(hex_color)
+            
+            # Sincroniza o ColorButton se existir
+            rgba = Gdk.RGBA()
+            rgba.parse(hex_color)
+            self.c_btn.set_rgba(rgba)
+        return True
+
+    def cycle_rgb_speed(self, b):
+        speeds = [0.002, 0.005, 0.010, 0.025]
+        current = self.config.get("rgb_speed", 0.005)
+        idx = speeds.index(current) if current in speeds else 1
+        new_speed = speeds[(idx + 1) % len(speeds)]
+        self.config["rgb_speed"] = new_speed
+        self._update_speed_label()
+        self._save_config_to_disk()
+
+    def _update_speed_label(self):
+        speed = self.config.get("rgb_speed", 0.005)
+        labels = {0.002: "🐢 Lento", 0.005: "🐇 Normal", 0.010: "🐆 Rápido", 0.025: "🔥 INSANO"}
+        self.speed_btn.set_label(labels.get(speed, "🐇 Normal"))
+
+    def _save_config_to_disk(self):
+        try:
+            if not os.path.exists(CONFIG_DIR): os.makedirs(CONFIG_DIR)
+            with open(CONFIG_FILE, "w") as f:
+                json.dump(self.config, f)
+        except: pass
+
     def _update_theme_icon(self):
-        is_dark = self.config.get("dark_mode")
-        self.t_img.set_from_icon_name("weather-clear-night-symbolic" if is_dark else "weather-clear-symbolic")
-        self.t_lbl.set_label(self.tr("dark" if is_dark else "light"))
+        mode = self.config.get("theme_mode", 1)
+        if mode == 0:
+            self.t_img.set_from_icon_name("weather-clear-symbolic")
+            self.t_lbl.set_label(self.tr("light"))
+        elif mode == 1:
+            self.t_img.set_from_icon_name("weather-clear-night-symbolic")
+            self.t_lbl.set_label(self.tr("dark"))
+        else:
+            self.t_img.set_from_icon_name("input-gaming-symbolic")
+            self.t_lbl.set_label(self.tr("gamer"))
 
     def on_color_set(self, b):
         rgba = b.get_rgba(); color = f"#{int(rgba.red * 255):02x}{int(rgba.green * 255):02x}{int(rgba.blue * 255):02x}"
         self.config["accent_color"] = color; self.apply_accent_color(color)
 
     def apply_accent_color(self, c):
-        css = f":root {{ --accent-color: {c}; }}"; prov = Gtk.CssProvider(); prov.load_from_data(css.encode())
-        Gtk.StyleContext.add_provider_for_display(Gdk.Display.get_default(), prov, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
+        css = f":root {{ --accent-color: {c}; }}"
+        self.accent_provider.load_from_data(css.encode())
 
     def _load_css(self):
         try:
+            display = Gdk.Display.get_default()
+            # CSS Principal
             prov = Gtk.CssProvider()
             prov.load_from_path(resource_path('style.css'))
-            Gtk.StyleContext.add_provider_for_display(Gdk.Display.get_default(), prov, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
+            Gtk.StyleContext.add_provider_for_display(display, prov, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
+            
+            # Provedor de Cores de Destaque (Acoplado ao Ciclo RGB)
+            Gtk.StyleContext.add_provider_for_display(display, self.accent_provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
         except Exception as e:
             print(f"DEBUG: Erro ao carregar CSS central: {e}")
 
