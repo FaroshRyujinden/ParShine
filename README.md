@@ -10,6 +10,8 @@
 
 ## 🌐 English
 
+<img width="1920" height="1080" alt="EN" src="https://github.com/user-attachments/assets/d03d2f07-33b7-4b51-822e-57477ab158fc" />
+
 ### ✨ Features
 - **Dashboard:** Monitor connected devices and active streaming sessions in real-time.
 - **PIN Pairing:** Easily pair new Moonlight clients directly from the interface.
@@ -51,6 +53,8 @@
 ---
 
 ## 🇧🇷 Português
+
+<img width="1920" height="1080" alt="BR" src="https://github.com/user-attachments/assets/d27664cb-8b4e-4a56-b286-0f5fc3c9bcc8" />
 
 **ParShine** é uma interface moderna e de alta performance em GTK4/Libadwaita para gerenciar o **Sunshine** (servidor de desktop remoto open-source) no Linux. Ele oferece uma interface bonita e intuitiva para configurar seu servidor de streaming sem precisar editar arquivos de configuração complexos.
 
