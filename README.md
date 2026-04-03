@@ -31,7 +31,7 @@
 #### Installation
 1. Clone the repository:
    ```bash
-   git clone https://github.com/farosh/parshine.git
+   git clone https://github.com/FaroshRyujinden/ParShine.git
    cd parshine
    ```
 2. Install dependencies:
@@ -75,7 +75,7 @@
 #### Instalação
 1. Clone o repositório:
    ```bash
-   git clone https://github.com/farosh/parshine.git
+   git clone https://github.com/FaroshRyujinden/ParShine.git
    cd parshine
    ```
 2. Instale as dependências:
