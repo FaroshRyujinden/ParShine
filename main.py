@@ -12,6 +12,7 @@ import threading
 import time
 from backend_api import SunshineBackend
 import colorsys
+import locale
 
 CONFIG_DIR = os.path.expanduser("~/.config/projeto_p")
 CONFIG_FILE = os.path.join(CONFIG_DIR, "config.json")
@@ -48,8 +49,21 @@ class ParShineSplash(Gtk.Window):
         self.spinner.set_size_request(60, 60)
         self.box.append(self.spinner)
         
+        # Label para Erros e Contagem (Invisível por padrão)
+        self.error_label = Gtk.Label(halign=Gtk.Align.CENTER)
+        self.error_label.add_css_class("splash-error-text")
+        self.error_label.set_margin_top(10)
+        self.error_label.set_visible(False)
+        self.box.append(self.error_label)
+        
         overlay.set_child(self.box)
         self.set_child(overlay)
+
+    def show_error(self, message):
+        self.spinner.set_visible(False)
+        self.error_label.set_label(message)
+        self.error_label.set_visible(True)
+        self.add_css_class("splash-error")
 
 class ProjetoPApp(Adw.Application):
     def __init__(self, **kwargs):
@@ -58,17 +72,28 @@ class ProjetoPApp(Adw.Application):
         self.connect('activate', self.on_activate)
         
         self.backend = SunshineBackend()
-        self.backend.ensure_setup()
+        # O backend.auto_setup() será chamado na thread _start_services
         
         # Provedor CSS persistente para cores de destaque (evita recriar a cada ciclo RGB)
         self.accent_provider = Gtk.CssProvider()
         
+        # Scout Intelligence: Autodetecção de Idioma do Sistema
+        try:
+            os_lang = locale.getdefaultlocale()[0]
+            default_lang = "pt" if os_lang and os_lang.startswith("pt") else "en"
+        except:
+            default_lang = "en"
+
         # Estado Inicial
-        self.config = {"theme_mode": 1, "accent_color": "#9b30ff", "lang": "pt", "rgb_speed": 0.005} # 0: Light, 1: Dark, 2: Gamer
+        self.config = {"theme_mode": 1, "accent_color": "#9b30ff", "lang": default_lang, "rgb_speed": 0.005, "known_devices": []} # 0: Light, 1: Dark, 2: Gamer
         self.load_local_config()
         self.hue = 0.0
         self.first_update_done = False
         self.last_client_info = None # Memoriza o identificador persistente
+        self.was_streaming = False   # Estado anterior para notificações
+        self.last_notified_client = "" 
+        self.last_display_list = []  # Cache para o Anti-Flicker System
+        self.last_known_conf = {}    # Memória para persistência visual durante reinícios
         
         self.presets = {
             "min_log_level": [("Verbose", "0"), ("Debug", "1"), ("Info", "2"), ("Warning", "3"), ("Error", "4"), ("Fatal", "5")],
@@ -143,7 +168,8 @@ class ProjetoPApp(Adw.Application):
                 "ds4_touchpad_tip": "Habilita o touchpad para clientes DS4.", "random_mac_tip": "Usa MAC aleatório para controles virtuais.",
                 "guide_timeout_tip": "Tempo p/ Select atuar como botão Home (ms).", "keyboard_tip": "Permitir entrada via teclado.",
                 "alt_win_tip": "Mapeia Alt Gr para a tecla Super/Windows.", "mouse_tip": "Permitir entrada via mouse.",
-                "hires_scroll_tip": "Melhora a precisão do scroll em mouses compatíveis.", "native_touch_tip": "Suporte a canetas e toques nativos."
+                "hires_scroll_tip": "Melhora a precisão do scroll em mouses compatíveis.", "native_touch_tip": "Suporte a canetas e toques nativos.",
+                "device_icon_tip": "Clique para trocar o tipo de dispositivo", "offline": "DESCONECTADO"
             },
             "en": {
                 "monitor": "Monitor", "pin": "Pair PIN", "settings": "Settings", "pc_info": "PC Status", "about": "About",
@@ -193,7 +219,8 @@ class ProjetoPApp(Adw.Application):
                 "ds4_touchpad_tip": "Enable touchpad support for DS4 clients.", "random_mac_tip": "Randomize MAC for virtual controllers.",
                 "guide_timeout_tip": "Delay for Select to act as Guide/Home button (ms).", "keyboard_tip": "Allow keyboard input from client.",
                 "alt_win_tip": "Remap Right Alt key to Windows key.", "mouse_tip": "Allow mouse input from client.",
-                "hires_scroll_tip": "Improved scroll precision on compatible hardware.", "native_touch_tip": "Native pen and touch support."
+                "hires_scroll_tip": "Improved scroll precision on compatible hardware.", "native_touch_tip": "Native pen and touch support.",
+                "device_icon_tip": "Click to change device icon", "offline": "OFFLINE"
             }
         }
         
@@ -204,9 +231,10 @@ class ProjetoPApp(Adw.Application):
 
     def _start_services(self):
         try:
-            if not self.backend.is_running():
-                self.backend.start()
-        except: pass
+            # Novo método unificado do backend (checa instalação, setup e execução)
+            self.backend.auto_setup()
+        except Exception as e:
+            print(f"DEBUG: Falha na inicialização automática dos serviços: {e}")
 
     def load_local_config(self):
         if os.path.exists(CONFIG_FILE):
@@ -222,8 +250,27 @@ class ProjetoPApp(Adw.Application):
         self.splash = ParShineSplash(app)
         self.splash.present()
         
-        # 2. Defer a criação da janela principal para manter a splash fluída
+        # 2. VALIDAÇÃO DE INSTALAÇÃO
+        if not self.backend.is_installed():
+            self.countdown = 5
+            self._handle_missing_sunshine()
+            return
+
+        # 3. Defer a criação da janela principal para manter a splash fluída
         GLib.timeout_add(100, self._init_main_ui, app)
+
+    def _handle_missing_sunshine(self):
+        if self.countdown > 0:
+            msg = f"Sunshine não instalado!\nRedirecionando em {self.countdown}s..."
+            self.splash.show_error(msg)
+            self.countdown -= 1
+            GLib.timeout_add_seconds(1, self._handle_missing_sunshine)
+        else:
+            # Abre o GitHub e fecha a aplicação
+            url = "https://github.com/LizardByte/Sunshine"
+            print(f"DEBUG: Sunshine não instalado. Abrindo {url}")
+            subprocess.Popen(["xdg-open", url])
+            self.quit()
 
     def _init_main_ui(self, app):
         self.win = Adw.ApplicationWindow(application=app)
@@ -231,17 +278,34 @@ class ProjetoPApp(Adw.Application):
         self.win.set_icon_name("io.github.farosh.parshine")
         self.win.set_default_size(1050, 800)
         
-        # Monitoramento (GDK)
+        # Scout Discovery System V7 (God Mode Clean)
         display = Gdk.Display.get_default()
         monitors_model = display.get_monitors()
-        self.monitors = []
-        for i in range(monitors_model.get_n_items()):
+        self.monitors = [] # Lista limpa
+        
+        total_mons = monitors_model.get_n_items()
+        is_wayland = "WAYLAND_DISPLAY" in os.environ
+        
+        for i in range(total_mons):
             m = monitors_model.get_item(i)
             model = m.get_model() or "Display"
-            self.monitors.append((f"Monitor {i+1}: Index {i} ({model})", str(i)))
-        
-        if not self.monitors: self.monitors = [("Monitor Principal (Index 0)", "0")]
-        
+            manufacturer = m.get_manufacturer() or ""
+            name = f"🖥️ {manufacturer} {model}".strip()
+            
+            # Reversão automática para Wayland (O segredo do sucesso)
+            target_id = str((total_mons - 1) - i) if is_wayland else str(i)
+            self.monitors.append((name, target_id))
+
+        # Smart Memory Selection
+
+        # Smart Memory Selection
+        last_monitor = self.config.get("last_monitor_name", "")
+        self.selected_monitor_idx = 0 
+        if last_monitor:
+            for idx, (label, val) in enumerate(self.monitors):
+                if last_monitor in label:
+                    self.selected_monitor_idx = idx
+                    break
         # Tema e Cores
         style_mgr = Adw.StyleManager.get_default()
         mode = self.config.get("theme_mode", 1)
@@ -329,15 +393,43 @@ class ProjetoPApp(Adw.Application):
         
         # O PIN agora é dinâmico via p_box
         
-        # Configurações com Cards e Heading Roxo
+        # Aba Configurações (Settings)
+        sett_main = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        # Header Fixo
+        self.s_header = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=20)
+        self.s_header.add_css_class("action-header")
+        self.s_save_btn = Gtk.Button(label="Salvar e Reiniciar") # Será traduzido no refresh
+        self.s_save_btn.add_css_class("accent-button"); self.s_save_btn.set_hexpand(True)
+        self.s_save_btn.set_margin_top(20); self.s_save_btn.set_margin_bottom(10)
+        self.s_save_btn.set_margin_start(40); self.s_save_btn.set_margin_end(40)
+        self.s_save_btn.connect("clicked", self.on_save_clicked)
+        self.s_header.append(self.s_save_btn)
+        sett_main.append(self.s_header)
+        
         self.s_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=15)
         for m in ['top', 'bottom', 'start', 'end']: getattr(self.s_box, f"set_margin_{m}")(40)
-        sett_sc = Gtk.ScrolledWindow(); sett_sc.set_child(self.s_box); self.stack.add_named(sett_sc, "settings")
+        sett_sc = Gtk.ScrolledWindow(); sett_sc.set_child(self.s_box); sett_sc.set_vexpand(True)
+        sett_main.append(sett_sc)
+        self.stack.add_named(sett_main, "settings")
         
-        # Aba Input
+        # Aba Input (Controles)
+        input_main = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        # Header Fixo
+        self.v_header = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=20)
+        self.v_header.add_css_class("action-header")
+        self.v_save_btn = Gtk.Button(label="Salvar e Reiniciar")
+        self.v_save_btn.add_css_class("accent-button"); self.v_save_btn.set_hexpand(True)
+        self.v_save_btn.set_margin_top(20); self.v_save_btn.set_margin_bottom(10)
+        self.v_save_btn.set_margin_start(40); self.v_save_btn.set_margin_end(40)
+        self.v_save_btn.connect("clicked", self.on_save_clicked)
+        self.v_header.append(self.v_save_btn)
+        input_main.append(self.v_header)
+
         self.v_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=15)
         for m in ['top', 'bottom', 'start', 'end']: getattr(self.v_box, f"set_margin_{m}")(40)
-        input_sc = Gtk.ScrolledWindow(); input_sc.set_child(self.v_box); self.stack.add_named(input_sc, "input")
+        input_sc = Gtk.ScrolledWindow(); input_sc.set_child(self.v_box); input_sc.set_vexpand(True)
+        input_main.append(input_sc)
+        self.stack.add_named(input_main, "input")
         
         # PIN
         self.p_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=30)
@@ -406,6 +498,7 @@ class ProjetoPApp(Adw.Application):
         index = self.sidebar_btns.index(b)
         self.widgets = {} 
         self.first_update_done = False 
+        self.last_display_list = [] # Limpa o cache para forçar o redesenho ao trocar de aba
         
         # Limpa todos os boxes dinâmicos
         for box in [self.i_box, self.m_box, self.p_box, self.v_box, self.s_box, self.a_box]:
@@ -414,23 +507,34 @@ class ProjetoPApp(Adw.Application):
         pages = ["devices", "pin", "input", "settings", "pc_info", "about"]
         self.stack.set_visible_child_name(pages[index])
         
+        # Usa o cache alimentado pelo background (Instantâneo e Seguro)
+        conf = self.last_known_conf
+            
         if index == 0: self.build_dash()
         elif index == 1: self.build_pin()
-        elif index == 2: self.build_input()
-        elif index == 3: self.build_settings()
+        elif index == 2: self.build_input(conf)
+        elif index == 3: self.build_settings(conf)
         elif index == 4: self.build_status()
         elif index == 5: self.build_about()
 
     def toggle_lang(self, b):
         self.config["lang"] = "en" if self.config["lang"] == "pt" else "pt"
         self._update_lang_ui()
+        self.last_display_list = [] # Redesenho imediato do dashboard
+        
+        # Limpa os containers antes de redesenhar
         while (child := self.s_box.get_first_child()): self.s_box.remove(child)
         while (child := self.i_box.get_first_child()): self.i_box.remove(child)
-        self.build_settings()
+
+        # Redesenha imediatamente usando o cache reativo
+        conf = self.last_known_conf
+        self.build_settings(conf)
         self.title_widget.set_subtitle(self.tr("subtitle"))
         if hasattr(self, "pin_title"): self.pin_title.set_label(self.tr("pair_title"))
         if hasattr(self, "pair_btn"): self.pair_btn.set_label(self.tr("pair_btn"))
         
+        self.s_save_btn.set_label(self.tr("save_btn"))
+        self.v_save_btn.set_label(self.tr("save_btn"))
         # Reset para forçar preenchimento no próximo refresh
         self.first_update_done = False
 
@@ -454,6 +558,22 @@ class ProjetoPApp(Adw.Application):
     def build_status(self):
         while (c := self.i_box.get_first_child()): self.i_box.remove(c)
         self._add_decoration(self.i_box)
+        tr = self.tr
+        
+        # Identidade do Sistema (Info Síncrona)
+        l = Gtk.Label(label=tr("sys_id"), xalign=0); l.add_css_class("heading"); self.i_box.append(l)
+        cl = Gtk.ListBox(); cl.add_css_class("card"); cl.set_selection_mode(0); cl.set_show_separators(True)
+        
+        distro = platform.freedesktop_os_release().get('PRETTY_NAME', 'Linux')
+        cpu = subprocess.getoutput("grep 'model name' /proc/cpuinfo | head -1 | cut -d: -f2").strip() or "CPU"
+        gpu = subprocess.getoutput("lspci | grep -i vga | cut -d: -f3-").split("[")[-1].split("]")[0] or "GPU"
+        ram = subprocess.getoutput("grep MemTotal /proc/meminfo | awk '{print int($2/1024/1024+0.5) \" GB\"}'") or "8 GB"
+        
+        for k, v in [("distro", distro), ("proc", cpu), ("gpu", gpu), ("mem", ram), ("Kernel", platform.release())]:
+            label_key = k.lower() if k.lower() in self.strings["pt"] else k
+            r = Adw.ActionRow(title=tr(label_key)); r.add_suffix(Gtk.Label(label=str(v), selectable=True)); cl.append(r)
+        
+        self.i_box.append(cl)
     def build_dash(self):
         while (c := self.m_box.get_first_child()): self.m_box.remove(c)
         self._add_decoration(self.m_box)
@@ -481,21 +601,39 @@ class ProjetoPApp(Adw.Application):
     def build_about(self):
         while (c := self.a_box.get_first_child()): self.a_box.remove(c)
         logo_file = resource_path("logo.png")
+        
+        # Centralizador
+        self.a_box.set_valign(Gtk.Align.CENTER)
+        
         if os.path.exists(logo_file):
             img = Gtk.Image.new_from_file(logo_file)
             img.set_pixel_size(160); img.set_margin_bottom(30); img.set_halign(Gtk.Align.CENTER)
             self.a_box.append(img)
             
-            l1 = Gtk.Label(label="ParShine Alpha v0.2"); l1.add_css_class("main-title")
+            l1 = Gtk.Label(label="ParShine v1.0"); l1.add_css_class("main-title")
             l1.set_halign(Gtk.Align.CENTER); self.a_box.append(l1)
             
-            l2 = Gtk.Label(label="Created by Farosh Ryujinden"); l2.set_opacity(0.7)
+            l2 = Gtk.Label(label="Created by Farosh Ryujinden"); l2.set_opacity(0.8); l2.add_css_class("heading")
             l2.set_halign(Gtk.Align.CENTER); self.a_box.append(l2)
+            
+            # Box de Links
+            link_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=20, halign=Gtk.Align.CENTER)
+            link_box.set_margin_top(20)
+            
+            # Github
+            gh_btn = Gtk.LinkButton.new_with_label("https://github.com/FaroshRyujinden", "🐲 GitHub")
+            gh_btn.add_css_class("flat"); link_box.append(gh_btn)
+            
+            # Website
+            ws_btn = Gtk.LinkButton.new_with_label("https://faroshryujinden.atlasnetwork.com.br/", "⚡ Website")
+            ws_btn.add_css_class("flat"); link_box.append(ws_btn)
+            
+            self.a_box.append(link_box)
         else:
-            sp = Adw.StatusPage(icon_name="help-about-symbolic", title="ParShine Alpha v0.2", description="Created by Farosh Ryujinden")
+            sp = Adw.StatusPage(icon_name="help-about-symbolic", title="ParShine v1.0", description="Created by Farosh Ryujinden")
             self.a_box.append(sp)
 
-    def build_input(self):
+    def build_input(self, conf):
         tr = self.tr
         self._add_decoration(self.v_box)
         def set_tip(w, k):
@@ -505,29 +643,42 @@ class ProjetoPApp(Adw.Application):
         l = Gtk.Label(label=tr("input"), xalign=0); l.add_css_class("heading"); self.v_box.append(l)
         c = Gtk.ListBox(); c.add_css_class("card"); c.set_selection_mode(0); c.set_show_separators(True)
         
+        # Helper pra setar valor inicial
+        def set_val(k, w):
+            v = conf.get(k, "false")
+            if isinstance(w, Adw.SwitchRow): w.set_active(str(v).lower() in ["1", "true"])
+            elif isinstance(w, Adw.EntryRow): w.set_text(str(v))
+
         # Gamepad
-        sw_gp = Adw.SwitchRow(title=tr("gamepad")); self.widgets["gamepad"] = sw_gp; set_tip(sw_gp, "gamepad"); c.append(sw_gp)
+        sw_gp = Adw.SwitchRow(title=tr("gamepad")); self.widgets["gamepad"] = sw_gp; set_tip(sw_gp, "gamepad"); set_val("gamepad", sw_gp); c.append(sw_gp)
+        
         for t, k, o in [(tr("gamepad_kind"), "gamepad_kind", self.presets["gamepad_kind"])]:
             r = Adw.ActionRow(title=t); sl = Gtk.StringList.new([opt[0] for opt in o]); dd = Gtk.DropDown(model=sl)
-            dd.set_valign(Gtk.Align.CENTER); r.add_suffix(dd); self.widgets[k] = (dd, None, o); set_tip(r, k); c.append(r)
+            dd.set_valign(Gtk.Align.CENTER)
+            
+            # Sincronização Síncrona
+            val = conf.get(k)
+            for idx, opt in enumerate(o):
+                if str(val) == str(opt[1]): dd.set_selected(idx); break
+                
+            r.add_suffix(dd); self.widgets[k] = (dd, None, o); set_tip(r, k); c.append(r)
         
-        sw_mot = Adw.SwitchRow(title=tr("ds4_motion")); self.widgets["motion_as_ds4"] = sw_mot; set_tip(sw_mot, "ds4_motion"); c.append(sw_mot)
-        sw_tp = Adw.SwitchRow(title=tr("ds4_touchpad")); self.widgets["touchpad_as_ds4"] = sw_tp; set_tip(sw_tp, "ds4_touchpad"); c.append(sw_tp)
-        sw_mac = Adw.SwitchRow(title=tr("random_mac")); self.widgets["ds5_inputtino_randomize_mac"] = sw_mac; set_tip(sw_mac, "random_mac"); c.append(sw_mac)
+        sw_mot = Adw.SwitchRow(title=tr("ds4_motion")); self.widgets["motion_as_ds4"] = sw_mot; set_tip(sw_mot, "ds4_motion"); set_val("motion_as_ds4", sw_mot); c.append(sw_mot)
+        sw_tp = Adw.SwitchRow(title=tr("ds4_touchpad")); self.widgets["touchpad_as_ds4"] = sw_tp; set_tip(sw_tp, "ds4_touchpad"); set_val("touchpad_as_ds4", sw_tp); c.append(sw_tp)
+        sw_mac = Adw.SwitchRow(title=tr("random_mac")); self.widgets["ds5_inputtino_randomize_mac"] = sw_mac; set_tip(sw_mac, "random_mac"); set_val("ds5_inputtino_randomize_mac", sw_mac); c.append(sw_mac)
         
-        r_tout = Adw.EntryRow(title=tr("guide_timeout")); self.widgets["back_button_timeout"] = r_tout; set_tip(r_tout, "guide_timeout"); c.append(r_tout)
+        r_tout = Adw.EntryRow(title=tr("guide_timeout")); self.widgets["back_button_timeout"] = r_tout; set_tip(r_tout, "guide_timeout"); set_val("back_button_timeout", r_tout); c.append(r_tout)
         
         # Teclado e Mouse
-        sw_kb = Adw.SwitchRow(title=tr("keyboard")); self.widgets["keyboard"] = sw_kb; set_tip(sw_kb, "keyboard"); c.append(sw_kb)
-        sw_alt = Adw.SwitchRow(title=tr("alt_win")); self.widgets["key_rightalt_to_key_win"] = sw_alt; set_tip(sw_alt, "alt_win"); c.append(sw_alt)
-        sw_ms = Adw.SwitchRow(title=tr("mouse")); self.widgets["mouse"] = sw_ms; set_tip(sw_ms, "mouse"); c.append(sw_ms)
-        sw_sc = Adw.SwitchRow(title=tr("hires_scroll")); self.widgets["hires_scrolling"] = sw_sc; set_tip(sw_sc, "hires_scroll"); c.append(sw_sc)
-        sw_tch = Adw.SwitchRow(title=tr("native_touch")); self.widgets["native_touch"] = sw_tch; set_tip(sw_tch, "native_touch"); c.append(sw_tch)
+        sw_kb = Adw.SwitchRow(title=tr("keyboard")); self.widgets["keyboard"] = sw_kb; set_tip(sw_kb, "keyboard"); set_val("keyboard", sw_kb); c.append(sw_kb)
+        sw_alt = Adw.SwitchRow(title=tr("alt_win")); self.widgets["key_rightalt_to_key_win"] = sw_alt; set_tip(sw_alt, "alt_win"); set_val("key_rightalt_to_key_win", sw_alt); c.append(sw_alt)
+        sw_ms = Adw.SwitchRow(title=tr("mouse")); self.widgets["mouse"] = sw_ms; set_tip(sw_ms, "mouse"); set_val("mouse", sw_ms); c.append(sw_ms)
+        sw_sc = Adw.SwitchRow(title=tr("hires_scroll")); self.widgets["hires_scrolling"] = sw_sc; set_tip(sw_sc, "hires_scroll"); set_val("hires_scrolling", sw_sc); c.append(sw_sc)
+        sw_tch = Adw.SwitchRow(title=tr("native_touch")); self.widgets["native_touch"] = sw_tch; set_tip(sw_tch, "native_touch"); set_val("native_touch", sw_tch); c.append(sw_tch)
         
         self.v_box.append(c)
-        save_btn = Gtk.Button(label=tr("save_btn"), margin_top=40); save_btn.add_css_class("accent-button"); save_btn.connect("clicked", self.on_save_clicked); self.v_box.append(save_btn)
 
-    def build_settings(self):
+    def build_settings(self, conf):
         tr = self.tr
         while (c := self.s_box.get_first_child()): self.s_box.remove(c)
         self._add_decoration(self.s_box)
@@ -556,9 +707,27 @@ class ProjetoPApp(Adw.Application):
         # Grupo: Vídeo e Áudio
         l = Gtk.Label(label=tr("video"), xalign=0); l.add_css_class("heading"); self.s_box.append(l)
         c = Gtk.ListBox(); c.add_css_class("card"); c.set_selection_mode(0); c.set_show_separators(True)
+        
+        conf = self.backend.get_config() or {}
+        
         for t, k, o in [(tr("monitor"), "output_name", self.monitors), (tr("res"), "resolutions", self.presets["resolutions"]), (tr("bit"), "max_bitrate", self.presets["max_bitrate"]), (tr("fps"), "fps", self.presets["fps"])]:
             r = Adw.ActionRow(title=t); sl = Gtk.StringList.new([opt[0] for opt in o]); dd = Gtk.DropDown(model=sl)
-            dd.set_valign(Gtk.Align.CENTER); r.add_suffix(dd); self.widgets[k] = (dd, None, o); set_tip(r, k); c.append(r)
+            dd.set_valign(Gtk.Align.CENTER)
+            
+            # Sincronização Inteligente (Sempre escolhe o certo ao abrir)
+            sel_idx = 0
+            if k == "output_name":
+                sel_idx = self.selected_monitor_idx
+            
+            # Se o valor na config do Sunshine bater com alguma opção, usa ela
+            val = conf.get(k)
+            for idx, opt in enumerate(o):
+                if str(val) == str(opt[1]):
+                    sel_idx = idx
+                    break
+            
+            dd.set_selected(sel_idx)
+            r.add_suffix(dd); self.widgets[k] = (dd, None, o); set_tip(r, k); c.append(r)
         
         sw_audio = Adw.SwitchRow(title=tr("audio")); self.widgets["audio"] = sw_audio; set_tip(sw_audio, "audio"); c.append(sw_audio)
         r_sink = Adw.EntryRow(title=tr("sink")); self.widgets["audio_sink"] = r_sink; set_tip(r_sink, "audio_sink"); c.append(r_sink)
@@ -573,7 +742,16 @@ class ProjetoPApp(Adw.Application):
         sw_upnp = Adw.SwitchRow(title="UPnP"); self.widgets["upnp"] = sw_upnp; set_tip(sw_upnp, "upnp"); c.append(sw_upnp)
         for t, k, o in [(tr("fam"), "address_family", self.presets["address_family"]), (tr("web_ui"), "web_ui_allowed_origin", self.presets["web_ui_allowed_origin"]), (tr("enc_lan"), "lan_encryption", self.presets["lan_encryption"]), (tr("enc_wan"), "wan_encryption", self.presets["wan_encryption"])]:
             r = Adw.ActionRow(title=t); sl = Gtk.StringList.new([opt[0] for opt in o]); dd = Gtk.DropDown(model=sl)
-            dd.set_valign(Gtk.Align.CENTER); r.add_suffix(dd); self.widgets[k] = (dd, None, o); set_tip(r, k); c.append(r)
+            dd.set_valign(Gtk.Align.CENTER)
+            
+            val = conf.get(k)
+            sel_idx = 0
+            for idx, opt in enumerate(o):
+                if str(val) == str(opt[1]):
+                    sel_idx = idx
+                    break
+            dd.set_selected(sel_idx)
+            r.add_suffix(dd); self.widgets[k] = (dd, None, o); set_tip(r, k); c.append(r)
         r_bind = Adw.EntryRow(title=tr("bind")); self.widgets["bind_address"] = r_bind; set_tip(r_bind, "bind_address"); c.append(r_bind)
         r_port = Adw.EntryRow(title=tr("port")); self.widgets["port"] = r_port; set_tip(r_port, "port"); c.append(r_port)
         r_ext = Adw.EntryRow(title=tr("external")); self.widgets["external_ip"] = r_ext; set_tip(r_ext, "external_ip"); c.append(r_ext)
@@ -585,7 +763,16 @@ class ProjetoPApp(Adw.Application):
         c = Gtk.ListBox(); c.add_css_class("card"); c.set_selection_mode(0); c.set_show_separators(True)
         for t, k, o in [(tr("hevc"), "hevc_mode", self.presets["hevc_mode"]), (tr("av1"), "av1_mode", self.presets["av1_mode"]), (tr("cap"), "capture_method", self.presets["capture_method"]), (tr("f_enc"), "encoder", self.presets["encoder"])]:
             r = Adw.ActionRow(title=t); sl = Gtk.StringList.new([opt[0] for opt in o]); dd = Gtk.DropDown(model=sl)
-            dd.set_valign(Gtk.Align.CENTER); r.add_suffix(dd); self.widgets[k] = (dd, None, o); set_tip(r, k); c.append(r)
+            dd.set_valign(Gtk.Align.CENTER)
+
+            val = conf.get(k)
+            sel_idx = 0
+            for idx, opt in enumerate(o):
+                if str(val) == str(opt[1]):
+                    sel_idx = idx
+                    break
+            dd.set_selected(sel_idx)
+            r.add_suffix(dd); self.widgets[k] = (dd, None, o); set_tip(r, k); c.append(r)
         r_fec = Adw.EntryRow(title=tr("fec")); self.widgets["fec_percentage"] = r_fec; set_tip(r_fec, "fec_percentage"); c.append(r_fec)
         r_qp = Adw.EntryRow(title=tr("qp")); self.widgets["qp"] = r_qp; set_tip(r_qp, "qp"); c.append(r_qp)
         r_thr = Adw.EntryRow(title=tr("threads")); self.widgets["min_threads"] = r_thr; set_tip(r_thr, "min_threads"); c.append(r_thr)
@@ -615,8 +802,6 @@ class ProjetoPApp(Adw.Application):
         c = Gtk.ListBox(); c.add_css_class("card"); c.set_selection_mode(0); c.set_show_separators(True)
         sw_va = Adw.SwitchRow(title=tr("va_strict")); self.widgets["vaapi_strict_rc_buffer"] = sw_va; set_tip(sw_va, "vaapi_strict"); c.append(sw_va)
         self.s_box.append(c)
-        
-        save_btn = Gtk.Button(label=tr("save_btn"), margin_top=40); save_btn.add_css_class("accent-button"); save_btn.connect("clicked", self.on_save_clicked); self.s_box.append(save_btn)
 
     def refresh_loop(self):
         threading.Thread(target=self._async_refresh, daemon=True).start()
@@ -624,7 +809,7 @@ class ProjetoPApp(Adw.Application):
 
     def _async_refresh(self):
         d = self.backend.get_devices()
-        c = self.backend.get_config()
+        c = self.backend.get_config() # PESCA ATIVA: Busca config a cada 1 segundo
         s = self.backend.is_streaming()
         cli = self.backend.get_streaming_client() if s else None
         active_uuid = self.backend.get_active_uuid() if s else None
@@ -637,74 +822,171 @@ class ProjetoPApp(Adw.Application):
         GLib.idle_add(self.update_ui, d, c, s, self.last_client_info or cli, active_uuid)
 
     def update_ui(self, devs, config_data, is_st, client_info, active_uuid):
-        # Limpar dev_flow (Gtk4 way)
+        # --- ATUALIZAÇÃO REATIVA DO CACHE (Safe Sync) ---
+        if config_data and len(config_data) > 5:
+            self.last_known_conf = config_data
+            
+            # --- AUTO-SYNC DE CAMPOS VAZIOS (v1.7) ---
+            # Se você estiver na aba de opções/input e o campo estiver vazio, o parShine preenche de volta sozinho!
+            if self.stack.get_visible_child_name() in ["settings", "input"]:
+                for k, w in self.widgets.items():
+                    val = config_data.get(k)
+                    if val is not None and isinstance(w, Adw.EntryRow):
+                        # Evita sobrescrever se o usuário estiver digitando (foco)
+                        if not w.get_text(): 
+                            w.set_text(str(val))
+            
+        # --- SISTEMA DE NOTIFICAÇÕES E MEMÓRIA ---
+        if "known_devices" not in self.config: self.config["known_devices"] = []
+        
+        current_connected_name = client_info['name'] if (is_st and client_info) else None
+        
+        # 1. Se alguém conectou, atualiza a memória
+        if current_connected_name:
+            found = False
+            for dev in self.config["known_devices"]:
+                if dev['name'] == current_connected_name:
+                    dev['last_seen'] = time.time()
+                    found = True; break
+            if not found:
+                # Novo dispositivo descoberto!
+                self.config["known_devices"].append({
+                    "name": current_connected_name,
+                    "type": client_info.get('type', 'remote'),
+                    "last_seen": time.time()
+                })
+                self._save_config_to_disk()
+
+        # 2. Notificações (Lógica já existente)
+        if is_st and not self.was_streaming:
+            self.send_system_notification("📡 Transmissão Iniciada", f"{current_connected_name} está conectado.")
+            self.last_notified_client = current_connected_name
+        elif not is_st and self.was_streaming:
+            self.send_system_notification("🔌 Transmissão Encerrada", f"{self.last_notified_client} se desconectou.")
+            self.last_notified_client = ""
+        
+        self.was_streaming = is_st
+
+        tr = self.tr
+        
+        # --- CÁLCULO DA LISTA ATUAL ---
+        display_list = []
+        seen_names = set()
+
+        # Primeiro: Dispositivos da memória (prioridade visual)
+        for d in self.config.get("known_devices", []):
+            name = d['name']
+            is_active = (is_st and name == current_connected_name)
+            display_list.append({
+                "name": name,
+                "type": d.get('type', 'remote'),
+                "status": "online" if is_active else "offline"
+            })
+            seen_names.add(name)
+
+        # Segundo: Dispositivos pareados que ainda não estão na memória
+        if devs:
+            for d in devs:
+                name = d.get('name', 'Poco')
+                if name not in seen_names:
+                    display_list.append({"name": name, "type": "mobile", "status": "offline"})
+                    seen_names.add(name)
+
+        # --- ANTI-FLICKER SYSTEM: Comparação Inteligente ---
+        if display_list == self.last_display_list:
+            # Nada mudou? Então não fazemos o 'pisca-pisca' visual
+            return
+        
+        self.last_display_list = display_list
+        self.dash_label.set_label(f"{tr('dash_title')}: {len(display_list)}")
+
+        # --- RECONSTRUÇÃO DA INTERFACE (Apenas se houver mudança real) ---
         while (child := self.dev_flow.get_first_child()):
             self.dev_flow.remove(child)
-            
-        tr = self.tr
-        # Heading: Apenas número
-        count = 1 if is_st else (len(devs) if devs else 0)
-        self.dash_label.set_label(f"{tr('dash_title')}: {count}")
 
-        if not is_st:
-            if not devs:
-                sp = Adw.StatusPage(icon_name="video-display-symbolic", title=tr("no_dev"), description=tr("dash_sub"))
-                self.dev_flow.append(sp)
-            else:
-                for dev in devs:
-                    tile = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10); tile.add_css_class("device-tile")
-                    icon = Gtk.Label(label="📱"); icon.add_css_class("device-emoji"); tile.append(icon)
-                    tile.append(Gtk.Label(label=dev.get('name', 'Poco'), xalign=0.5)); self.dev_flow.append(tile)
+        if not display_list:
+            sp = Adw.StatusPage(icon_name="video-display-symbolic", title=tr("no_dev"), description=tr("dash_sub"))
+            self.dev_flow.append(sp)
         else:
-            # Card de Streaming
-            tile = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10); tile.add_css_class("device-tile")
-            is_mobile = (client_info and client_info.get('type') == 'mobile')
-            icon = Gtk.Label(label="📱" if is_mobile else "🖥️"); icon.add_css_class("device-emoji"); tile.append(icon)
-            tile.append(Gtk.Label(label=client_info['name'] if client_info else "...", xalign=0.5))
-            if client_info and client_info.get('ip'):
-                ip_lbl = Gtk.Label(label=client_info['ip'], xalign=0.5); ip_lbl.set_opacity(0.6); tile.append(ip_lbl)
-            badge = Gtk.Label(label=tr("streaming")); badge.add_css_class("success-label"); tile.append(badge); self.dev_flow.append(tile)
-
-        # Identidade do Sistema (Info)
-        has_info = False
-        c = self.i_box.get_first_child()
-        while c:
-            if isinstance(c, Gtk.ListBox): has_info = True; break
-            c = c.get_next_sibling()
-        if not has_info:
-            l = Gtk.Label(label=tr("sys_id"), xalign=0); l.add_css_class("heading"); self.i_box.append(l)
-            cl = Gtk.ListBox(); cl.add_css_class("card"); cl.set_selection_mode(0); cl.set_show_separators(True)
-            distro = platform.freedesktop_os_release().get('PRETTY_NAME', 'Linux')
-            cpu = subprocess.getoutput("grep 'model name' /proc/cpuinfo | head -1 | cut -d: -f2").strip() or "CPU"
-            gpu = subprocess.getoutput("lspci | grep -i vga | cut -d: -f3-").split("[")[-1].split("]")[0] or "GPU"
-            ram = subprocess.getoutput("grep MemTotal /proc/meminfo | awk '{print int($2/1024/1024+0.5) \" GB\"}'") or "8 GB"
-            for k, v in [("distro", distro), ("proc", cpu), ("gpu", gpu), ("mem", ram), ("Kernel", platform.release())]:
-                label_key = k.lower() if k.lower() in self.strings["pt"] else k
-                r = Adw.ActionRow(title=tr(label_key)); r.add_suffix(Gtk.Label(label=str(v), selectable=True)); cl.append(r)
-            self.i_box.append(cl)
-
-        if config_data and not self.first_update_done:
-            for k, w in self.widgets.items():
-                val = config_data.get(k, "")
-                if isinstance(val, list) and len(val) > 0: val = val[0]
-                val_str = str(val)
+            for dev in display_list:
+                is_online = (dev['status'] == "online")
                 
-                if isinstance(w, tuple):
-                    for i, o in enumerate(w[2]):
-                        if str(o[1]) == val_str:
-                            w[0].set_selected(i)
-                            break
-                elif isinstance(w, Adw.SwitchRow): w.set_active(val_str.lower() in ["1", "true"])
-                elif isinstance(w, Adw.EntryRow): w.set_text(val_str)
-            self.first_update_done = True
+                # Container Principal com Overlay para o botão flutuante
+                tile_overlay = Gtk.Overlay()
+                tile_overlay.add_css_class("device-tile")
+                if not is_online: tile_overlay.add_css_class("device-offline")
+
+                # Box interna com os dados do dispositivo
+                tile_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
+                
+                # Ícone Interativo (Botão de Alternância de Tipo)
+                icon_map = {"pc": "🖥️", "mobile": "📱"}
+                current_type = dev.get('type', 'remote')
+                icon_char = icon_map.get(current_type, "🖥️")
+                
+                icon_btn = Gtk.Button(label=icon_char)
+                icon_btn.add_css_class("device-icon-button")
+                icon_btn.add_css_class("flat")
+                icon_btn.set_tooltip_text(tr("device_icon_tip"))
+                icon_btn.connect("clicked", self.on_device_type_toggle, dev['name'])
+                tile_box.append(icon_btn)
+                
+                name_lbl = Gtk.Label(label=dev['name'], xalign=0.5); tile_box.append(name_lbl)
+                
+                badge = Gtk.Label()
+                if is_online:
+                    badge.set_label(tr("streaming"))
+                    badge.add_css_class("success-label")
+                    
+                    # Botão EX PUS LAR (Emoji ❌ no Topo Direito)
+                    kick_btn = Gtk.Button(label="❌")
+                    kick_btn.add_css_class("kick-button")
+                    kick_btn.add_css_class("flat")
+                    kick_btn.set_tooltip_text("Desconectar Dispositivo")
+                    kick_btn.set_halign(Gtk.Align.END)
+                    kick_btn.set_valign(Gtk.Align.START)
+                    kick_btn.set_margin_top(-10) # Ajuste fino de posição
+                    kick_btn.set_margin_end(-10) 
+                    kick_btn.connect("clicked", self.on_kick_clicked)
+                    tile_overlay.add_overlay(kick_btn)
+                else:
+                    badge.set_label(tr("offline"))
+                    badge.add_css_class("offline-label")
+                
+                tile_box.append(badge)
+                tile_overlay.set_child(tile_box)
+                self.dev_flow.append(tile_overlay)
+
+    def on_device_type_toggle(self, b, device_name):
+        """Alterna o tipo do dispositivo (ícone) e salva na memória."""
+        types = ["pc", "mobile"]
+        for dev in self.config.get("known_devices", []):
+            if dev['name'] == device_name:
+                curr = dev.get('type', 'remote')
+                next_type = types[(types.index(curr) + 1) % len(types)] if curr in types else "pc"
+                dev['type'] = next_type
+                self._save_config_to_disk()
+                self.build_dash() # Atualiza visualmente
+                break
+
+    def on_kick_clicked(self, b):
+        self.backend.terminate_session()
+        self.send_system_notification("⚠️ Expulsão", "A sessão de streaming foi encerrada manualmente.")
 
     def on_save_clicked(self, b):
         payload = {}
         for k, w in self.widgets.items():
-            if isinstance(w, tuple): payload[k] = w[2][w[0].get_selected()][1]
+            if isinstance(w, tuple): 
+                sel_idx = w[0].get_selected()
+                payload[k] = w[2][sel_idx][1]
+                # Se for o monitor, salva o nome amigável para memória futura
+                if k == "output_name":
+                    self.config["last_monitor_name"] = w[2][sel_idx][0]
             elif isinstance(w, Adw.SwitchRow): payload[k] = "true" if w.get_active() else "false"
             elif isinstance(w, Adw.EntryRow): payload[k] = w.get_text()
-        if self.backend.save_config(payload): self.backend.restart_service()
+        if self.backend.save_config(payload): 
+            self.last_known_conf.update(payload) # Resync imediato da memória visual
+            self.backend.restart_service()
 
     def on_pair_clicked(self, b):
         pin = self.pin_entry.get_text()
@@ -721,9 +1003,15 @@ class ProjetoPApp(Adw.Application):
         else:
             style_mgr.set_color_scheme(Adw.ColorScheme.FORCE_DARK)
             
-        # Ao sair do modo gamer para o light, reseta para a cor original
+        # Ao sair do modo gamer, reseta para a cor original (fixa)
         if mode != 2:
-            self.apply_accent_color(self.config.get("accent_color", "#9b30ff"))
+            fixed_color = self.config.get("accent_color", "#9b30ff")
+            self.apply_accent_color(fixed_color)
+            
+            # Sincroniza o seletor de cores (ColorButton)
+            rgba = Gdk.RGBA()
+            rgba.parse(fixed_color)
+            self.c_btn.set_rgba(rgba)
             
         self._save_config_to_disk()
         self._update_theme_icon()
@@ -797,6 +1085,18 @@ class ProjetoPApp(Adw.Application):
             Gtk.StyleContext.add_provider_for_display(display, self.accent_provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
         except Exception as e:
             print(f"DEBUG: Erro ao carregar CSS central: {e}")
+
+    def send_system_notification(self, title, message):
+        """Envia uma notificação nativa para o sistema (GNOME, KDE, etc.)"""
+        try:
+            notification = Gio.Notification.new(title)
+            notification.set_body(message)
+            # Usa o ícone do próprio app na notificação
+            icon = Gio.ThemedIcon.new("io.github.farosh.parshine")
+            notification.set_icon(icon)
+            self.send_notification("parshine-status", notification)
+        except Exception as e:
+            print(f"DEBUG: Falha ao enviar notificação: {e}")
 
 if __name__ == '__main__':
     app = ProjetoPApp()

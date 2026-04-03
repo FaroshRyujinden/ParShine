@@ -87,8 +87,62 @@
 }
 
 /* Device Emojis */
-.device-emoji {
-    font-size: 72px;
+/* Device Icons & Buttons */
+.device-emoji, .device-icon-button {
+    font-size: 64px;
+    margin-bottom: 5px;
+    background: transparent;
+    border: none;
+    box-shadow: none;
+    min-width: 80px;
+    min-height: 80px;
+    transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+/* Animação de Aura Neon (Brilho que Respira) */
+@keyframes aura-pulse {
+    0% { 
+        box-shadow: 0 10px 30px alpha(var(--accent-color), 0.2);
+        border-color: alpha(var(--accent-color), 0.4);
+    }
+    50% { 
+        box-shadow: 0 15px 50px alpha(var(--accent-color), 0.5);
+        border-color: alpha(var(--accent-color), 0.8);
+    }
+    100% { 
+        box-shadow: 0 10px 30px alpha(var(--accent-color), 0.2);
+        border-color: alpha(var(--accent-color), 0.4);
+    }
+}
+
+.device-tile {
+    background-color: alpha(currentColor, 0.03);
+    border-radius: 24px;
+    padding: 25px;
+    min-width: 180px;
+    border: 1.5px solid alpha(white, 0.15); /* Bordas Brancas Sutis */
+    transition: all 400ms ease;
+    transform: none !important; /* Estabilidade Total */
+}
+
+.device-tile:hover {
+    background-color: alpha(var(--accent-color), 0.08);
+    animation: aura-pulse 3s infinite ease-in-out;
+    border-color: var(--accent-color);
+}
+
+.device-tile:hover .device-icon-button {
+    color: var(--accent-color);
+    transform: none;
+}
+
+.device-icon-button:active {
+    transform: scale(0.9);
+}
+
+.device-icon-button:focus {
+    outline: none;
+    box-shadow: none;
 }
 
 /* Main title styling */
@@ -115,20 +169,18 @@
 }
 
 /* --- Device Tile (Devices Page Grid) --- */
-.device-tile {
-    background-color: alpha(currentColor, 0.03);
-    border-radius: 24px;
-    padding: 25px;
-    min-width: 180px;
-    border: 1px solid alpha(currentColor, 0.08);
-    transition: all 250ms cubic-bezier(0.2, 0, 0.3, 1);
+
+.device-offline {
+    border-color: alpha(#ed333b, 0.3);
+    background-color: alpha(#ed333b, 0.03);
+    opacity: 0.65;
 }
 
-.device-tile:hover {
-    transform: translateY(-5px) scale(1.02);
-    background-color: alpha(var(--accent-color), 0.05);
-    border-color: alpha(var(--accent-color), 0.4);
-    box-shadow: 0 10px 30px alpha(var(--accent-color), 0.15);
+.device-offline:hover {
+    background-color: alpha(#ed333b, 0.08);
+    border-color: alpha(#ed333b, 0.7);
+    box-shadow: 0 10px 30px alpha(#ed333b, 0.2);
+    opacity: 1;
 }
 
 .device-icon {
@@ -202,6 +254,17 @@
     letter-spacing: 0.5px;
 }
 
+.offline-label {
+    color: #ed333b;
+    font-weight: 800;
+    font-size: 0.85em;
+    background: alpha(#ed333b, 0.15);
+    padding: 4px 12px;
+    border-radius: 99px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
 .dim-label {
     opacity: 0.5;
     font-weight: 500;
@@ -238,4 +301,44 @@
     margin-top: 30px;
     min-width: 60px;
     min-height: 60px;
+}
+
+/* Splash Error State */
+.splash-error-text {
+    color: #ed333b;
+    font-weight: bold;
+    font-size: 13pt;
+    text-align: center;
+    margin-top: 20px;
+    text-shadow: 0 4px 12px alpha(#ed333b, 0.3);
+}
+
+.splash-error .splash-logo {
+    filter: drop-shadow(0 0 35px alpha(#ed333b, 0.7));
+    transform: scale(0.95);
+}
+
+.action-header {
+    background-color: alpha(currentColor, 0.02);
+    border-bottom: 1px solid alpha(currentColor, 0.05);
+    z-index: 10;
+}
+
+.kick-button {
+    background-color: transparent;
+    color: currentColor;
+    border-radius: 99px;
+    padding: 0;
+    min-height: 36px;
+    min-width: 36px;
+    margin-top: 8px;
+    transition: transform 150ms ease;
+    border: none;
+    box-shadow: none;
+    font-size: 14pt;
+}
+
+.kick-button:hover {
+    background-color: alpha(currentColor, 0.08); /* Sutil destaque ao hover */
+    transform: scale(1.2);
 }

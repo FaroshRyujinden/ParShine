@@ -1,4 +1,5 @@
 import os
+import shutil
 import subprocess
 import requests
 import time
@@ -26,6 +27,24 @@ class SunshineBackend:
             subprocess.run(["sunshine", "--creds", "admin", "admin"], 
                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
+    def is_installed(self):
+        """Verifica se o binário do Sunshine está presente no PATH."""
+        return shutil.which("sunshine") is not None
+
+    def auto_setup(self):
+        """Verifica instalação e inicia o serviço se necessário."""
+        if not self.is_installed():
+            print("DEBUG: Sunshine não encontrado no sistema.")
+            return False
+        
+        self.ensure_setup()
+        
+        if not self.is_running():
+            print("DEBUG: Sunshine detectado, mas parado. Iniciando...")
+            return self.start()
+        
+        return True
+
     def is_running(self):
         try:
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
@@ -46,41 +65,58 @@ class SunshineBackend:
         return self.is_running()
 
     def get_config(self):
+        """Busca as configurações via API com fallback para leitura direta de arquivo."""
         try:
-            r = self.session.get(f"{self.api_url}/config", timeout=2)
+            r = self.session.get(f"{self.api_url}/config", timeout=1)
             if r.status_code == 200:
                 return r.json()
         except: pass
+        
+        # FALLBACK: Se a API falhar (503/Restart), lê direto do arquivo de disco
+        conf_path = os.path.join(self.config_dir, "sunshine.conf")
+        if os.path.exists(conf_path):
+            try:
+                conf = {}
+                with open(conf_path, "r") as f:
+                    for line in f:
+                        line = line.strip()
+                        if "=" in line and not line.startswith("#"):
+                            parts = line.split("=", 1)
+                            if len(parts) == 2:
+                                k, v = parts[0].strip(), parts[1].strip()
+                                # Remove aspas se existirem
+                                if (v.startswith('"') and v.endswith('"')) or (v.startswith("'") and v.endswith("'")):
+                                    v = v[1:-1]
+                                conf[k] = v
+                return conf
+            except: pass
         return {}
 
     def save_config(self, config_data):
         try:
             sanitized = {}
+            # Lista de chaves que DEVEM ser tratadas como String (Texto)
+            string_keys = ["sunshine_name", "gamepad_kind", "capture_method", "encoder", "sw_preset", "sw_tune", 
+                           "nvenc_preset", "nvenc_coder", "web_ui_allowed_origin", "audio"]
+            
+            # Lista de chaves que DEVEM ser tratadas como Booleanos (0 ou 1)
+            bool_keys = ["upnp", "nvenc_aq", "vaapi_strict_rc_buffer", "audio", "gamepad", 
+                         "motion_as_ds4", "touchpad_as_ds4", "ds5_inputtino_randomize_mac",
+                         "keyboard", "key_rightalt_to_key_win", "mouse", "hires_scrolling", "native_touch"]
+
             for k, v in config_data.items():
-                if k in ["max_bitrate", "fps", "min_log_level", "hevc_mode", "qp", "upnp", 
-                         "nvenc_preset", "nvenc_multipass", "nvenc_vbr_padding_percent",
-                         "nvenc_aq", "nvenc_coder", "vaapi_strict_rc_buffer",
-                         "fec_percentage", "min_threads", "av1_mode", "display_id", "min_fps",
-                         "address_family", "port", "web_ui_allowed_origin", "lan_encryption",
-                         "wan_encryption", "ping_timeout", "audio",
-                         "sunshine_name", "gamepad_kind", "capture_method", "encoder",
-                         "sw_preset", "sw_tune",
-                         "gamepad", "motion_as_ds4", "touchpad_as_ds4", "ds5_inputtino_randomize_mac",
-                         "back_button_timeout", "keyboard", "key_rightalt_to_key_win", "mouse",
-                         "hires_scrolling", "native_touch"]:
-                    try:
-                        if k in ["upnp", "nvenc_aq", "nvenc_coder", "vaapi_strict_rc_buffer", "audio",
-                                 "gamepad", "motion_as_ds4", "touchpad_as_ds4", "ds5_inputtino_randomize_mac",
-                                 "keyboard", "key_rightalt_to_key_win", "mouse", "hires_scrolling", "native_touch"]:
-                            sanitized[k] = 1 if str(v).lower() == "true" else 0
-                        else:
-                            sanitized[k] = int(v)
-                    except: sanitized[k] = v
+                if k in bool_keys:
+                    sanitized[k] = 1 if str(v).lower() == "true" else 0
+                elif k in string_keys:
+                    sanitized[k] = str(v)
                 elif k == "resolutions":
-                    # Sunshine espera uma lista de resoluções. Ex: ["1920x1080"]
                     sanitized[k] = [v] if isinstance(v, str) else v
                 else:
-                    sanitized[k] = v
+                    try:
+                        # Tenta converter para int o que sobrar (resoluções, fps, bitrate, etc)
+                        sanitized[k] = int(v)
+                    except:
+                        sanitized[k] = v
 
             current = self.get_config()
             # SEGURANÇA: Se o config atual falhar ao carregar, não salve por cima (evita o crash 503)
@@ -118,6 +154,13 @@ class SunshineBackend:
     def pair_pin(self, pin):
         try:
             r = self.session.post(f"{self.api_url}/pin", json={"pin": str(pin)}, timeout=2)
+            return r.status_code == 200
+        except: return False
+
+    def terminate_session(self):
+        """Força o encerramento da transmissão atual."""
+        try:
+            r = self.session.post(f"{self.api_url}/terminate", timeout=2)
             return r.status_code == 200
         except: return False
 
