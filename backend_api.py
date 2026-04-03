@@ -18,6 +18,12 @@ class SunshineBackend:
         self.session = requests.Session()
         self.session.auth = self.auth
         self.session.verify = False
+        # HEADERS ANTICSRF: Crucial para evitar Erro 400 em operações de alteração de estado (DELETE/POST)
+        self.session.headers.update({
+            "Origin": "https://localhost:47990",
+            "Referer": "https://localhost:47990/",
+            "X-Requested-With": "XMLHttpRequest"
+        })
         self.client_cache = {} # Cache persistente para nomes de rede
 
     def ensure_setup(self):
@@ -157,27 +163,75 @@ class SunshineBackend:
             return r.status_code == 200
         except: return False
 
-    def terminate_session(self):
-        """Força o encerramento da transmissão atual."""
+    def terminate_session(self, sid=None):
+        """Força o encerramento de conexões ativas testando múltiplos endpoints e payloads."""
+        print(f"DEBUG BACKEND: Início de terminate_session. ID: {sid}")
         try:
-            r = self.session.post(f"{self.api_url}/terminate", timeout=2)
-            return r.status_code == 200
-        except: return False
+            # 1. Tenta DELETE nos endpoints comuns
+            for endpoint in ["connections", "sessions", "rest/sessions", "rest/connections"]:
+                if sid:
+                    url = f"{self.api_url}/{endpoint}/{sid}"
+                    r = self.session.delete(url, timeout=2)
+                    print(f"DEBUG BACKEND: DELETE {endpoint} status: {r.status_code}")
+                    if r.status_code in [200, 204]: return True
+            
+            # 2. Tenta POST /terminate com diferentes payloads
+            targets = ["terminate", "sessions/terminate", "connections/terminate"]
+            payload_keys = ["uuid", "id", "sessionId"]
+            
+            for target in targets:
+                url = f"{self.api_url}/{target}"
+                # Tentativa com Payload
+                if sid:
+                    for key in payload_keys:
+                        payload = {key: sid}
+                        r = self.session.post(url, json=payload, timeout=2)
+                        print(f"DEBUG BACKEND: POST {target} ({key}) status: {r.status_code}")
+                        if r.status_code in [200, 204]: return True
+                
+                # Tentativa SEM payload (limpeza geral)
+                r = self.session.post(url, timeout=2)
+                print(f"DEBUG BACKEND: POST {target} (no-body) status: {r.status_code}")
+                if r.status_code in [200, 204]: return True
+
+            # 3. Tenta via RPC se o resto falhar (algumas versões aceitam isso)
+            if sid:
+                 url = f"{self.api_url}/sessions"
+                 r = self.session.post(url, json={"action": "terminate", "id": sid}, timeout=2)
+                 print(f"DEBUG BACKEND: RPC Terminate status: {r.status_code}")
+                 if r.status_code in [200, 204]: return True
+
+            # 4. ÚLTIMO RECURSO (NÚCLEO): Se nada expulsou, reinicia o serviço inteiro
+            print("DEBUG BACKEND: Todas as tentativas de expulsão falharam. Reiniciando o serviço para forçar a saída.")
+            return self.restart_service()
+
+        except Exception as e:
+            print(f"DEBUG BACKEND: ERRO CRÍTICO em terminate_session: {e}")
+            # Fallback mesmo em erro crítico
+            return self.restart_service()
+        return False
 
     def is_streaming(self):
-        """Detecta se há uma conexão ativa verificando se o Sunshine está gravando áudio (pactl)."""
+        """Detecta se há uma conexão ativa via Áudio (pactl)."""
         try:
-            # Pega lista de fontes de áudio sendo gravadas em formato JSON
             res = subprocess.getoutput("pactl --format=json list source-outputs")
-            if not res.strip() or res.strip() == "[]": return False
+            if not res or res.strip() in ["[]", "{}", ""]: return False
             
             data = json.loads(res)
-            for item in data:
+            # pactl pode retornar uma lista ou um objeto único
+            items = data if isinstance(data, list) else [data]
+            
+            for item in items:
+                if not isinstance(item, dict): continue
                 props = item.get("properties", {})
-                if props.get("application.name") == "sunshine" and not item.get("corked", True):
+                # Nome do app pode variar (sunshine ou Sunshine)
+                app_name = str(props.get("application.name", "")).lower()
+                if app_name == "sunshine" and not item.get("corked", True):
                     return True
-            return False
-        except: return False
+        except Exception as e:
+            print(f"DEBUG BACKEND: Erro ao checar streaming (PulseAudio): {e}")
+            
+        return False
 
     def get_streaming_client(self):
         """Tenta identificar o dispositivo conectado via rede, logs e tailscale."""
@@ -236,20 +290,44 @@ class SunshineBackend:
         except: return None
 
     def get_active_uuid(self):
-        """Busca o UUID do cliente que iniciou a transmissão lendo os logs do Sunshine."""
+        """Busca o ID da conexão ativa em múltiplos endpoints da API e logs."""
+        # 1. TENTA VIA API (MODERNO E SEGURO)
+        for endpoint in ["connections", "sessions", "rest/sessions", "rest/connections"]:
+            try:
+                r = self.session.get(f"{self.api_url}/{endpoint}", timeout=1)
+                if r.status_code == 200:
+                    data = r.json()
+                    # O Sunshine pode retornar um objeto {"connections": [...]} OU uma lista [...]
+                    conns = []
+                    if isinstance(data, list): conns = data
+                    elif isinstance(data, dict):
+                        conns = data.get("connections", []) or data.get("sessions", []) or data.get("data", [])
+                        if not conns:
+                            # Tenta converter mapa de chaves se a estrutura for ID -> Dados
+                            conns = [{"id": k, **v} for k, v in data.items() if isinstance(v, dict)]
+                    
+                    if conns:
+                        # Pega o ID da primeira conexão encontrada
+                        for c in conns:
+                            sid = c.get("id") or c.get("uuid") or c.get("sessionId")
+                            if sid: return sid
+            except: pass
+
+        # 2. FALLBACK: SCAN TOTAL DO LOG (O arquivo do user tem 100k+ linhas devido ao spam de vídeo)
         try:
             log_file = os.path.join(self.config_dir, "sunshine.log")
-            if not os.path.exists(log_file): return None
-            
-            # Pega as últimas 100 linhas e busca o último UUID mencionado
-            res = subprocess.getoutput(f"tail -n 100 {log_file} | grep -i 'uuid' | tail -n 1")
-            if not res.strip(): return None
-            
-            import re
-            match = re.search(r'uuid\s*--\s*([a-fA-F0-9-]+)', res)
-            return match.group(1).lower() if match else None
-        except: 
-            return None
+            if os.path.exists(log_file):
+                # O grep -a força tratar como texto (evita o erro "arquivo binário coincide")
+                pat = r'[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{12}'
+                cmd = f'grep -oaE "{pat}" "{log_file}" | tail -n 1'
+                res = subprocess.getoutput(cmd)
+                if res.strip() and not res.strip().startswith("grep"):
+                    uuid = res.strip().lower()
+                    return uuid
+        except Exception as e:
+            print(f"DEBUG BACKEND: Falha no scan do log: {e}")
+        
+        return None
 
     def restart_service(self):
         print("DEBUG: Executando restart_service...")

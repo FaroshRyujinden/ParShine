@@ -79,7 +79,11 @@ class ProjetoPApp(Adw.Application):
         
         # Scout Intelligence: Autodetecção de Idioma do Sistema
         try:
-            os_lang = locale.getdefaultlocale()[0]
+            # MÉTODO MODERNO: Substitui o depreciado locale.getdefaultlocale()
+            import locale
+            os_lang, _ = locale.getlocale(locale.LC_MESSAGES)
+            if not os_lang:
+                os_lang = os.environ.get('LANG', 'en')
             default_lang = "pt" if os_lang and os_lang.startswith("pt") else "en"
         except:
             default_lang = "en"
@@ -372,7 +376,7 @@ class ProjetoPApp(Adw.Application):
         self.c_btn.set_margin_bottom(20)
         rgba = Gdk.RGBA()
         rgba.parse(self.config.get("accent_color", "#9b30ff"))
-        self.c_btn.set_rgba(rgba)
+        self.c_btn.set_property("rgba", rgba)
         self.c_btn.connect("color-set", self.on_color_set)
         sb_box.append(self.c_btn)
         
@@ -819,9 +823,16 @@ class ProjetoPApp(Adw.Application):
                 self.last_client_info = cli
         else: self.last_client_info = None
 
+        if active_uuid and not getattr(self, 'last_logged_uuid', None) == active_uuid:
+            print(f"DEBUG REFRESH: Nova Sessão Detectada! ID: {active_uuid}")
+            self.last_logged_uuid = active_uuid
+        elif not active_uuid:
+            self.last_logged_uuid = None
+        
         GLib.idle_add(self.update_ui, d, c, s, self.last_client_info or cli, active_uuid)
 
     def update_ui(self, devs, config_data, is_st, client_info, active_uuid):
+        self.current_session_id = active_uuid # Armazena para o botão de expulsar
         # --- ATUALIZAÇÃO REATIVA DO CACHE (Safe Sync) ---
         if config_data and len(config_data) > 5:
             self.last_known_conf = config_data
@@ -910,6 +921,10 @@ class ProjetoPApp(Adw.Application):
         else:
             for dev in display_list:
                 is_online = (dev['status'] == "online")
+                # SE houver um active_uuid global, e o dispositivo estiver offline no state mas for o único da lista
+                # ou se o is_st estiver True, forca o status 'conectado' para o dispositivo que está transmitindo
+                if is_st and (dev['name'] == current_connected_name or len(display_list) == 1):
+                    is_online = True
                 
                 # Container Principal com Overlay para o botão flutuante
                 tile_overlay = Gtk.Overlay()
@@ -970,7 +985,16 @@ class ProjetoPApp(Adw.Application):
                 break
 
     def on_kick_clicked(self, b):
-        self.backend.terminate_session()
+        session_id = getattr(self, 'current_session_id', None)
+        print(f"DEBUG FRONTEND: Clicou em expulsar! ID: {session_id}")
+        
+        # Só notifica UMA VEZ por tentativa ativa para evitar o erro de excesso de notificações
+        if hasattr(self, 'last_kick_time') and (time.time() - self.last_kick_time < 3.0):
+            print("DEBUG FRONTEND: Spam detectado, ignorando clique extra.")
+            return
+
+        self.last_kick_time = time.time()
+        self.backend.terminate_session(session_id)
         self.send_system_notification("⚠️ Expulsão", "A sessão de streaming foi encerrada manualmente.")
 
     def on_save_clicked(self, b):
@@ -1011,7 +1035,7 @@ class ProjetoPApp(Adw.Application):
             # Sincroniza o seletor de cores (ColorButton)
             rgba = Gdk.RGBA()
             rgba.parse(fixed_color)
-            self.c_btn.set_rgba(rgba)
+            self.c_btn.set_property("rgba", rgba)
             
         self._save_config_to_disk()
         self._update_theme_icon()
@@ -1029,7 +1053,7 @@ class ProjetoPApp(Adw.Application):
             # Sincroniza o ColorButton se existir
             rgba = Gdk.RGBA()
             rgba.parse(hex_color)
-            self.c_btn.set_rgba(rgba)
+            self.c_btn.set_property("rgba", rgba)
         return True
 
     def cycle_rgb_speed(self, b):

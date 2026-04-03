@@ -122,7 +122,7 @@
     min-width: 180px;
     border: 1.5px solid alpha(white, 0.15); /* Bordas Brancas Sutis */
     transition: all 400ms ease;
-    transform: none !important; /* Estabilidade Total */
+    transform: none; /* Estabilidade Total */
 }
 
 .device-tile:hover {
@@ -308,7 +308,6 @@
     color: #ed333b;
     font-weight: bold;
     font-size: 13pt;
-    text-align: center;
     margin-top: 20px;
     text-shadow: 0 4px 12px alpha(#ed333b, 0.3);
 }
@@ -321,7 +320,6 @@
 .action-header {
     background-color: alpha(currentColor, 0.02);
     border-bottom: 1px solid alpha(currentColor, 0.05);
-    z-index: 10;
 }
 
 .kick-button {
