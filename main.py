@@ -10,6 +10,7 @@ import subprocess
 import platform
 import threading
 import time
+import sys
 from backend_api import SunshineBackend
 import colorsys
 import locale
@@ -18,11 +19,11 @@ CONFIG_DIR = os.path.expanduser("~/.config/projeto_p")
 CONFIG_FILE = os.path.join(CONFIG_DIR, "config.json")
 
 def resource_path(relative_path):
-    """ Busca o caminho correto para recursos (funciona no PyInstaller e no Dev) """
-    try:
-        base_path = sys._MEIPASS
-    except Exception:
-        base_path = os.path.abspath(".")
+    """ Busca o caminho correto para recursos (funciona no PyInstaller, AppImage e no Dev) """
+    if hasattr(sys, '_MEIPASS'):
+        return os.path.join(sys._MEIPASS, relative_path)
+    # Em AppImage ou Dev, o caminho base deve ser onde o main.py está fisicamente
+    base_path = os.path.dirname(os.path.abspath(__file__))
     return os.path.join(base_path, relative_path)
 
 class ParShineSplash(Gtk.Window):
