@@ -1,130 +1,133 @@
-ParShine 🐉
-
-ParShine is a modern, high-performance GTK4/Libadwaita frontend for managing Sunshine on Linux.
+# ParShine 🐉
 
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![GTK4](https://img.shields.io/badge/UI-GTK4%2FLibadwaita-62a0ea.svg)](https://www.gtk.org/)
 
-English | Português
-🌐 English
-🚀 Installation & Setup
-1. AppImage (Recommended / Easiest)
+**ParShine** is a modern, high-performance GTK4/Libadwaita frontend for managing **Sunshine** (the open-source remote desktop host) on Linux. It provides a beautiful and intuitive interface to configure your streaming server without touching complex configuration files.
 
-The fastest way to run ParShine without worrying about dependencies.
+[English](#-english) | [Português (Brasil)](#-português-br)
 
-    Download the latest .AppImage from the Releases page.
+---
 
-    Give it execution permission:
-    Bash
+## 🌐 English
 
-    chmod +x ParShine-x86_64.AppImage
+### 🚀 Getting Started
 
-    Run it:
-    Bash
+#### 1. AppImage (Recommended)
+The easiest way to run ParShine on any Linux distro without installing dependencies.
+1. Download the latest `.AppImage` from the [Releases](https://github.com/FaroshRyujinden/ParShine/releases) page.
+2. Make it executable:
 
-    ./ParShine-x86_64.AppImage
+   ```bash
+   
+   chmod +x ParShine-v1.0.AppImage && ./ParShine-v1.0.AppImage
 
-2. From Source (Manual / Development)
+3. Running from Source (Recommended for Devs)
 
-If you prefer running from source, we recommend using a Virtual Environment (venv) to avoid system conflicts.
+To avoid "externally-managed-environment" errors on distros like Arch Linux, always use a virtual environment (venv).
 
-Prerequisites: Ensure you have python3-pip, python3-venv, and the GTK4/Libadwaita development libraries installed on your system.
-Bash
+# Clone the repository ✌️
 
-# Clone the repository
-git clone https://github.com/FaroshRyujinden/ParShine.git
-cd ParShine
+    git clone [https://github.com/FaroshRyujinden/ParShine.git](https://github.com/FaroshRyujinden/ParShine.git)
+    cd ParShine
 
-# Create and activate virtual environment
-python -m venv .venv
-source .venv/bin/activate
+# Create and activate the virtual environment 🖥️
 
-# Install dependencies inside the venv
-pip install --upgrade pip
-pip install -r requirements.txt
+    python -m venv .venv
+    source .venv/bin/activate
 
-# Run the app
-python main.py
+# Install dependencies inside the environment 👨‍💻
 
-    Note: To run it again later, remember to run source .venv/bin/activate first.
+    pip install --upgrade pip
+    pip install -r requirements.txt
 
-✨ Features
+# Run the app 🏃‍♂️‍➡️
 
-    Dashboard: Real-time monitoring of connected devices.
+    python main.py
 
-    PIN Pairing: Direct Moonlight pairing via UI.
+4. Features 🌟
 
-    Full Config: Video (NVENC, VA-API, Software), Input, and Network settings.
+    Dashboard: Monitor connected devices and active streaming sessions in real-time.
 
-    System Info: Built-in hardware monitor (CPU/GPU/Mem).
+    PIN Pairing: Pair new Moonlight clients directly from the interface.
 
-    Customization: Libadwaita accent colors and Dark/Light mode support.
+    Full Configuration: Video (NVENC, VA-API, Software), Input (Xbox/DS/DualSense), and Network settings.
 
-🇧🇷 Português (BR)
-🚀 Instalação e Execução
-1. AppImage (Recomendado)
+    Advanced Options: FEC, QP parameters, CPU threads, and HEVC/AV1 support.
 
-A maneira mais rápida de usar o ParShine sem se preocupar com dependências de sistema.
+    System Info: Built-in hardware monitor (Distro, CPU, GPU, and RAM).
 
-    Baixe o .AppImage mais recente na página de Releases.
+    Customization: Dynamic accent colors and Dark/Light mode support.
 
-    Dê permissão de execução ao arquivo:
-    Bash
 
-    chmod +x ParShine-x86_64.AppImage
 
-    Execute:
-    Bash
 
-    ./ParShine-x86_64.AppImage
 
-2. Código Fonte (Manual / Desenvolvimento)
 
-Para rodar via código, recomendamos o uso de um Ambiente Virtual (venv) para isolar as bibliotecas.
+## 🇧🇷 Português (BR)
 
-Pré-requisitos: Você precisará do python3-pip, python3-venv e das bibliotecas de desenvolvimento do GTK4/Libadwaita da sua distro.
-Bash
+ParShine é uma interface moderna e de alta performance em GTK4/Libadwaita para gerenciar o Sunshine no Linux.
 
-# Clone o repositório
-git clone https://github.com/FaroshRyujinden/ParShine.git
-cd ParShine
+### 🚀 Como Começar
+### 1. AppImage (Recomendado)
 
-# Criar e ativar o ambiente virtual
-python -m venv .venv
-source .venv/bin/activate
+A maneira mais simples de rodar em qualquer distro sem quebrar a cabeça com dependências.
+1. Baixe o .AppImage mais recente na página de [Releases](https://github.com/FaroshRyujinden/ParShine/releases).
+2. Dê permissão de execução com CHMOD
+   
+    ```bash
+   
+   chmod +x ParShine-v1.0.AppImage && ./ParShine-v1.0.AppImage
 
-# Instalar dependências dentro do venv
-pip install --upgrade pip
-pip install -r requirements.txt
+3. Executando via Código Fonte (Para Usuários avançados)
 
-# Executar o projeto
-python main.py
+Para evitar erros de ambiente gerenciado pelo sistema (comum no Arch), use um ambiente virtual (venv).
 
-    Dica: Sempre que for rodar o código novamente, lembre-se de ativar o ambiente com source .venv/bin/activate.
+# Clone o repositório ✌️
 
-✨ Funcionalidades
+    git clone [https://github.com/FaroshRyujinden/ParShine.git](https://github.com/FaroshRyujinden/ParShine.git)
+    cd ParShine
 
-    Painel: Monitoramento em tempo real de dispositivos conectados.
+# Cria e ativa o ambiente virtual 🖥️
 
-    Pareamento PIN: Pareie o Moonlight sem abrir o navegador.
+    python -m venv .venv
+    source .venv/bin/activate
 
-    Configuração Total: Vídeo (NVENC, VA-API), Controles e Rede.
+# Instala as dependências dentro do ambiente 👨‍💻
 
-    Info do Sistema: Monitor de hardware integrado.
+    pip install --upgrade pip
+    pip install -r requirements.txt
 
-    Customização: Suporte a cores de destaque e modo escuro nativo.
+# Roda o aplicativo 🏃‍♂️‍➡️
+    
+    python main.py
 
-🛠️ Tech Stack
+4. Funcionalidades 🌟
 
-    Python (Logic)
+    Painel: Monitore dispositivos e sessões ativas em tempo real.
 
-    PyGObject (GTK4 / Libadwaita)
+    Pareamento PIN: Pareie novos clientes Moonlight facilmente.
 
-    Requests (Sunshine API communication)
+    Configuração Completa: Ajustes de Vídeo (NVENC, VA-API), Controles e Rede.
+
+    Opções Avançadas: Ajustes de FEC, QP, threads de CPU e suporte a HEVC/AV1.
+
+    Info do Sistema: Monitor de hardware integrado (Distro, CPU, GPU e Memória).
+
+    Customização: Cores de destaque dinâmicas e suporte a Modo Escuro.
+
+
+# Technologies / Tecnologias 🛠️
+
+    Language: Python
+
+    UI Framework: GTK4 / Libadwaita (PyGObject)
+
+    Backend: Requests (Sunshine API)
 
 📜 License / Licença
 
-Distributed under the GPL v3.0 License.
+Distributed under the GPL v3.0 License. See LICENSE for more information.
 
 Created with ❤️ by Farosh Ryujinden
