@@ -12,6 +12,8 @@
 
 ## 🌐 English
 
+<img width="1920" height="1080" alt="EN" src="https://github.com/user-attachments/assets/ec9bcb74-d524-4a31-bfed-897d942315cd" />
+
 ### 🚀 Getting Started
 
 #### 1. AppImage (Recommended)
@@ -66,6 +68,8 @@ To avoid "externally-managed-environment" errors on distros like Arch Linux, alw
 
 
 ## 🇧🇷 Português (BR)
+
+<img width="1920" height="1080" alt="BR" src="https://github.com/user-attachments/assets/dacee75f-793f-4bfd-b5bd-a19f8d70af56" />
 
 ParShine é uma interface moderna e de alta performance em GTK4/Libadwaita para gerenciar o Sunshine no Linux.
 
